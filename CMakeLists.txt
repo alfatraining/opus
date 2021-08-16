@@ -6,6 +6,22 @@ get_package_version(PACKAGE_VERSION PROJECT_VERSION)
 
 project(Opus LANGUAGES C VERSION ${PROJECT_VERSION})
 
+if(MSVC)
+	option(MSVC_LINK_STATIC_RUNTIME "Use static linking of msvc runtime" OFF)
+endif()
+
+# switch from dynamic to static linking
+if(MSVC AND MSVC_LINK_STATIC_RUNTIME)
+	foreach(flag_var
+		CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
+		CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO)
+
+		if(${flag_var} MATCHES "/MD")
+			string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+		endif(${flag_var} MATCHES "/MD")
+	endforeach(flag_var)
+endif()
+
 include(OpusFunctions)
 include(OpusBuildtype)
 include(OpusConfig)
