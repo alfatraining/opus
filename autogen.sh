@@ -13,4 +13,3 @@ dnn/download_model.sh "735117b"
 
 echo "Updating build configuration files, please wait...."
 
-autoreconf -isf
