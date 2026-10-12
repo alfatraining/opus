@@ -398,7 +398,15 @@ static OPUS_INLINE void silk_PLC_conceal(
     }
 #ifdef ENABLE_DEEP_PLC
     if ( lpcnet != NULL && lpcnet->loaded && psDec->sPLC.fs_kHz == 16 ) {
-        int run_deep_plc = psDec->sPLC.enable_deep_plc || lpcnet->fec_fill_pos != 0;
+        /* Run the neural PLC when the complexity enables it, or while DRED
+           features remain unread - the same test CELT applies
+           (celt_decode_lost(): fec_fill_pos > fec_read_pos). Testing
+           fec_fill_pos != 0 instead kept it running after the features were
+           consumed: nothing resets fec_fill_pos until the next DRED decode,
+           so one DRED recovery left every later concealment and comfort-noise
+           frame on the neural PLC whatever the complexity, at several times
+           the CPU of the plain PLC. */
+        int run_deep_plc = psDec->sPLC.enable_deep_plc || lpcnet->fec_read_pos != lpcnet->fec_fill_pos;
         if( run_deep_plc ) {
             for( k = 0; k < psDec->nb_subfr; k += 2 ) {
                 lpcnet_plc_conceal( lpcnet, frame + k * psDec->subfr_length );
