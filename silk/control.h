@@ -97,6 +97,9 @@ typedef struct {
     /* I: Make frames as independent as possible (but still use LPC)                        */
     opus_int reducedDependency;
 
+    /* O:   Range-coder bits the LBRR (in-band FEC) data of the last packet took, 0 if none */
+    opus_int lbrrBits;
+
     /* O:   Internal sampling rate used, in Hertz; 8000/12000/16000                         */
     opus_int32 internalSampleRate;
 
@@ -140,6 +143,9 @@ typedef struct {
 
     /* O:   Pitch lag of previous frame (0 if unvoiced), measured in samples at 48 kHz      */
     opus_int prevPitchLag;
+
+    /* O:   Range-coder bits of the LBRR (in-band FEC) data skipped in the last payload      */
+    opus_int lbrrBits;
 
     /* I:   Enable Deep PLC                                                                 */
     opus_int enable_deep_plc;

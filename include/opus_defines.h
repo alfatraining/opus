@@ -154,6 +154,7 @@ extern "C" {
 #define OPUS_GET_LOOKAHEAD_REQUEST           4027
 /* #define OPUS_RESET_STATE 4028 */
 #define OPUS_GET_SAMPLE_RATE_REQUEST         4029
+#define OPUS_GET_LBRR_BITS_REQUEST           4101
 #define OPUS_GET_FINAL_RANGE_REQUEST         4031
 #define OPUS_GET_PITCH_REQUEST               4033
 #define OPUS_SET_GAIN_REQUEST                4034
@@ -717,6 +718,9 @@ extern "C" {
   * @param[out] x <tt>opus_uint32 *</tt>: Entropy coder state
   *
   * @hideinitializer */
+/** Gets the range-coder bits the in-band FEC (LBRR) data of the last encoded (encoder) or decoded (decoder) packet took; 0 when none.
+  * @param[out] x <tt>opus_int32 *</tt> @hideinitializer */
+#define OPUS_GET_LBRR_BITS(x) OPUS_GET_LBRR_BITS_REQUEST, opus_check_int_ptr(x)
 #define OPUS_GET_FINAL_RANGE(x) OPUS_GET_FINAL_RANGE_REQUEST, opus_check_uint_ptr(x)
 
 /** Gets the encoder's configured bandpass or the decoder's last bandpass.

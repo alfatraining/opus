@@ -49,6 +49,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
 #include "arch.h"
 #include "opus_multistream.h"
 #include "opus.h"
@@ -1884,6 +1885,152 @@ int test_malloc_fail(void)
 #endif
 #endif
 
+
+/* OPUS_GET_LBRR_BITS: the bits of the in-band FEC data of the packet just encoded / decoded, and 0 for a packet that
+   carries none. Voiced speech-like input so SILK codes LBRR; the cases are the ones a stale value would show on. */
+static void lbrr_fill_voiced(opus_int16 *pcm, int n, int start)
+{
+   int i;
+   for (i=0;i<n;i++)
+   {
+      double t=(double)(start+i)/48000.0;
+      double v=0;
+      int h;
+      for (h=1;h<=8;h++) v+=sin(6.2831853*140.0*h*t)/h;
+      pcm[i]=(opus_int16)(3000.0*v*(0.6+0.4*sin(6.2831853*4.0*t)));
+   }
+}
+
+int test_lbrr_bits(void)
+{
+   enum { FRAME=960 };
+   opus_int16 pcm[FRAME];
+   opus_int16 out[FRAME];
+   unsigned char pkt[1500];
+   OpusEncoder *enc, *celt_enc;
+   OpusDecoder *dec;
+   int err, n, i, enc_bits, dec_bits, pos=0;
+   int total=0, seen_lbrr=0, seen_celt_after_lbrr=0, dtx_packets=0, mismatches=0;
+
+   enc=opus_encoder_create(48000,1,OPUS_APPLICATION_VOIP,&err);
+   if(err!=OPUS_OK||enc==NULL)test_failed();
+   celt_enc=opus_encoder_create(48000,1,OPUS_APPLICATION_RESTRICTED_LOWDELAY,&err);
+   if(err!=OPUS_OK||celt_enc==NULL)test_failed();
+   dec=opus_decoder_create(48000,1,&err);
+   if(err!=OPUS_OK||dec==NULL)test_failed();
+   opus_encoder_ctl(enc,OPUS_SET_INBAND_FEC(1));
+   opus_encoder_ctl(enc,OPUS_SET_PACKET_LOSS_PERC(20));
+   opus_encoder_ctl(enc,OPUS_SET_DTX(1));
+   total+=3;
+
+   /* encoder and decoder agree per packet; remember that some packet carried LBRR */
+   for (i=0;i<100;i++)
+   {
+      lbrr_fill_voiced(pcm,FRAME,pos); pos+=FRAME;
+      n=opus_encode(enc,pcm,FRAME,pkt,sizeof(pkt)); total++;
+      if(n<0)test_failed();
+      if(opus_encoder_ctl(enc,OPUS_GET_LBRR_BITS(&enc_bits))!=OPUS_OK)test_failed();
+      total++;
+      if(n>2)
+      {
+         if(opus_decode(dec,pkt,n,out,FRAME,0)<0)test_failed();
+         if(opus_decoder_ctl(dec,OPUS_GET_LBRR_BITS(&dec_bits))!=OPUS_OK)test_failed();
+         total+=2;
+         if(enc_bits!=dec_bits)mismatches++;
+         if(dec_bits>0)seen_lbrr=1;
+      }
+   }
+   if(mismatches!=0||!seen_lbrr)test_failed();
+
+   /* decoder: a CELT-only packet after a packet whose LBRR bits were read must read 0, not the previous packet's */
+   if(dec_bits<=0)
+   {
+      /* make sure the last decoded packet carried LBRR: keep encoding until one does */
+      for (i=0;i<200&&dec_bits<=0;i++)
+      {
+         lbrr_fill_voiced(pcm,FRAME,pos); pos+=FRAME;
+         n=opus_encode(enc,pcm,FRAME,pkt,sizeof(pkt));
+         if(n>2){opus_decode(dec,pkt,n,out,FRAME,0);opus_decoder_ctl(dec,OPUS_GET_LBRR_BITS(&dec_bits));}
+      }
+      if(dec_bits<=0)test_failed();
+   }
+   for (i=0;i<4;i++)
+   {
+      lbrr_fill_voiced(pcm,FRAME,pos); pos+=FRAME;
+      n=opus_encode(celt_enc,pcm,FRAME,pkt,sizeof(pkt));
+      if(n<=2)test_failed();
+      if(opus_decode(dec,pkt,n,out,FRAME,0)<0)test_failed();
+      if(opus_decoder_ctl(dec,OPUS_GET_LBRR_BITS(&dec_bits))!=OPUS_OK)test_failed();
+      total+=3;
+      if(dec_bits!=0)test_failed();
+      seen_celt_after_lbrr++;
+   }
+   /* a lost frame (PLC) and a DTX/1-byte packet also read 0 on the decoder */
+   lbrr_fill_voiced(pcm,FRAME,pos); pos+=FRAME;
+   n=opus_encode(enc,pcm,FRAME,pkt,sizeof(pkt));
+   if(n>2){opus_decode(dec,pkt,n,out,FRAME,0);}
+   if(opus_decode(dec,NULL,0,out,FRAME,0)<0)test_failed();
+   if(opus_decoder_ctl(dec,OPUS_GET_LBRR_BITS(&dec_bits))!=OPUS_OK)test_failed();
+   total+=3;
+   if(dec_bits!=0)test_failed();
+
+   /* encoder: after voiced speech with FEC, silence makes DTX (1-byte) packets; none may report LBRR bits.
+      (SILK codes no LBRR in a pause, so this holds with or without the clearing on the DTX return; it pins the invariant,
+      not the clearing.) */
+   for (i=0;i<200;i++)
+   {
+      memset(pcm,0,sizeof(pcm));
+      n=opus_encode(enc,pcm,FRAME,pkt,sizeof(pkt)); total++;
+      if(n<0)test_failed();
+      if(opus_encoder_ctl(enc,OPUS_GET_LBRR_BITS(&enc_bits))!=OPUS_OK)test_failed();
+      total++;
+      if(n<=2)
+      {
+         dtx_packets++;
+         if(enc_bits!=0)test_failed();
+      }
+      /* the first silent packets after speech are the ones carrying the last frames' LBRR */
+      if(i<10)
+      {
+         lbrr_fill_voiced(pcm,FRAME,pos); pos+=FRAME;
+         n=opus_encode(enc,pcm,FRAME,pkt,sizeof(pkt));
+      }
+   }
+   if(dtx_packets==0)test_failed();
+
+   /* encoder: a packet returned as a 1-byte packet because the output buffer is tiny carries no LBRR, so it must not
+      report LBRR bits. (Same caveat as above: SILK does not code LBRR into such a buffer, so this pins the invariant,
+      not the clearing on the busted-target return.) */
+   {
+      int busted=0;
+      for (i=0;i<100;i++)
+      {
+         lbrr_fill_voiced(pcm,FRAME,pos); pos+=FRAME;
+         n=opus_encode(enc,pcm,FRAME,pkt,6); total++;
+         if(n<0)continue;
+         if(opus_encoder_ctl(enc,OPUS_GET_LBRR_BITS(&enc_bits))!=OPUS_OK)test_failed();
+         total++;
+         if(n<=2)
+         {
+            busted++;
+            if(enc_bits!=0)test_failed();
+         }
+      }
+      if(busted==0)test_failed();
+   }
+
+   /* a null pointer is refused, as for the other getters */
+   if(opus_encoder_ctl(enc,OPUS_GET_LBRR_BITS((opus_int32*)NULL))!=OPUS_BAD_ARG)test_failed();
+   if(opus_decoder_ctl(dec,OPUS_GET_LBRR_BITS((opus_int32*)NULL))!=OPUS_BAD_ARG)test_failed();
+   total+=2;
+
+   opus_encoder_destroy(enc);
+   opus_encoder_destroy(celt_enc);
+   opus_decoder_destroy(dec);
+   (void)seen_celt_after_lbrr;
+   return total;
+}
+
 int main(int _argc, char **_argv)
 {
    opus_int32 total;
@@ -1909,6 +2056,7 @@ int main(int _argc, char **_argv)
    total+=test_enc_api();
    total+=test_repacketizer_api();
    total+=test_malloc_fail();
+   total+=test_lbrr_bits();
 
    fprintf(stderr,"\nAll API tests passed.\nThe libopus API was invoked %d times.\n",total);
 

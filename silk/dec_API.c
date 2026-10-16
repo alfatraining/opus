@@ -231,6 +231,7 @@ opus_int silk_Decode(                                   /* O    Returns error co
 
     if( lostFlag != FLAG_PACKET_LOST && channel_state[ 0 ].nFramesDecoded == 0 ) {
         /* First decoder call for this payload */
+        decControl->lbrrBits = 0;
         /* Decode VAD flags and LBRR flag */
         for( n = 0; n < decControl->nChannelsInternal; n++ ) {
             for( i = 0; i < channel_state[ n ].nFramesPerPacket; i++ ) {
@@ -254,6 +255,7 @@ opus_int silk_Decode(                                   /* O    Returns error co
         }
 
         if( lostFlag == FLAG_DECODE_NORMAL ) {
+            opus_int lbrrTell0 = ec_tell( psRangeDec );
             /* Regular decoding: skip all LBRR data */
             for( i = 0; i < channel_state[ 0 ].nFramesPerPacket; i++ ) {
                 for( n = 0; n < decControl->nChannelsInternal; n++ ) {
@@ -279,6 +281,7 @@ opus_int silk_Decode(                                   /* O    Returns error co
                     }
                 }
             }
+            decControl->lbrrBits = ec_tell( psRangeDec ) - lbrrTell0;
         }
     }
 

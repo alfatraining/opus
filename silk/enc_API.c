@@ -282,6 +282,7 @@ opus_int silk_Encode(                                   /* O    Returns error co
                            psEnc->state_Fxx[ 0 ].sCmn.API_fs_Hz,
                        psEnc->state_Fxx[ 0 ].sCmn.fs_kHz * 1000 );
     ALLOC( buf, nSamplesFromInputMax, opus_int16 );
+    encControl->lbrrBits = 0;
     while( 1 ) {
         int curr_nBitsUsedLBRR = 0;
         nSamplesToBuffer  = psEnc->state_Fxx[ 0 ].sCmn.frame_length - psEnc->state_Fxx[ 0 ].sCmn.inputBufIx;
@@ -404,6 +405,7 @@ opus_int silk_Encode(                                   /* O    Returns error co
                     silk_memset( psEnc->state_Fxx[ n ].sCmn.LBRR_flags, 0, sizeof( psEnc->state_Fxx[ n ].sCmn.LBRR_flags ) );
                 }
                 curr_nBitsUsedLBRR = ec_tell( psRangeEnc ) - curr_nBitsUsedLBRR;
+                encControl->lbrrBits = curr_nBitsUsedLBRR;
             }
 
             silk_HP_variable_cutoff( psEnc->state_Fxx );

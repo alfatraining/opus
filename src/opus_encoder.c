@@ -2042,6 +2042,9 @@ static opus_int32 opus_encode_frame_native(OpusEncoder *st, const opus_res *pcm,
 
     /* SILK processing */
     HB_gain = Q15ONE;
+    /* The LBRR bits OPUS_GET_LBRR_BITS reports belong to the packet being returned: 0 unless SILK codes some below,
+       and cleared again on the returns that drop the SILK payload (DTX, busted target). */
+    st->silk_mode.lbrrBits = 0;
     if (st->mode != MODE_CELT_ONLY)
     {
         opus_int32 total_bitRate, celt_rate;
@@ -2241,6 +2244,7 @@ static opus_int32 opus_encode_frame_native(OpusEncoder *st, const opus_res *pcm,
         }
         if (nBytes==0)
         {
+           st->silk_mode.lbrrBits = 0;
            st->rangeFinal = 0;
            data[-1] = gen_toc(st->mode, st->Fs/frame_size, curr_bandwidth, st->stream_channels);
            RESTORE_STACK;
@@ -2566,6 +2570,7 @@ static opus_int32 opus_encode_frame_native(OpusEncoder *st, const opus_res *pcm,
     {
        if (decide_dtx_mode(activity, &st->nb_no_activity_ms_Q1, 2*1000*frame_size/st->Fs))
        {
+          st->silk_mode.lbrrBits = 0;
           st->rangeFinal = 0;
           data[0] = gen_toc(st->mode, st->Fs/frame_size, curr_bandwidth, st->stream_channels);
           RESTORE_STACK;
@@ -2586,6 +2591,7 @@ static opus_int32 opus_encode_frame_native(OpusEncoder *st, const opus_res *pcm,
        }
        data[1] = 0;
        ret = 1;
+       st->silk_mode.lbrrBits = 0;
        st->rangeFinal = 0;
     } else if (st->mode==MODE_SILK_ONLY&&!redundancy)
     {
@@ -3099,6 +3105,16 @@ int opus_encoder_ctl(OpusEncoder *st, int request, ...)
                goto bad_arg;
             }
             *value = st->Fs;
+        }
+        break;
+        case OPUS_GET_LBRR_BITS_REQUEST:
+        {
+            opus_int32 *value = va_arg(ap, opus_int32*);
+            if (!value)
+            {
+               goto bad_arg;
+            }
+            *value = st->silk_mode.lbrrBits;
         }
         break;
         case OPUS_GET_FINAL_RANGE_REQUEST:

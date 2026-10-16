@@ -301,6 +301,9 @@ static int opus_decode_frame(OpusDecoder *st, const unsigned char *data,
 
    silk_dec = (char*)st+st->silk_dec_offset;
    celt_dec = (CELTDecoder*)((char*)st+st->celt_dec_offset);
+   /* OPUS_GET_LBRR_BITS describes the frame decoded here: 0 for CELT-only, lost and DTX frames, which never reach
+      silk_Decode's own reset. */
+   st->DecControl.lbrrBits = 0;
    F20 = st->Fs/50;
    F10 = F20>>1;
    F5 = F10>>1;
@@ -1096,6 +1099,16 @@ int opus_decoder_ctl(OpusDecoder *st, int request, ...)
    }
    break;
 #endif
+   case OPUS_GET_LBRR_BITS_REQUEST:
+   {
+      opus_int32 *value = va_arg(ap, opus_int32*);
+      if (!value)
+      {
+         goto bad_arg;
+      }
+      *value = st->DecControl.lbrrBits;
+   }
+   break;
    case OPUS_GET_FINAL_RANGE_REQUEST:
    {
       opus_uint32 *value = va_arg(ap, opus_uint32*);
